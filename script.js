@@ -295,7 +295,7 @@ document.getElementById('btn-pistol').onclick = () => { if(localPlayer.money >= 
 document.getElementById('btn-shotgun').onclick = () => { if(localPlayer.money >= 1000 && !localPlayer.inv.shotgun) { localPlayer.money -= 1000; localPlayer.inv.shotgun = true; localPlayer.inv.shotgunAmmo = 6; updateUI(); updateShopUI(); switchSlot(3); }};
 document.getElementById('btn-food').onclick = () => { if(localPlayer.money >= 30) { localPlayer.money -= 30; localPlayer.inv.food++; updateUI(); updateShopUI(); }};
 document.getElementById('btn-water').onclick = () => { if(localPlayer.money >= 20) { localPlayer.money -= 20; localPlayer.inv.water++; updateUI(); updateShopUI(); }};
-  // --- 7. LOGIC & COMBAT ---
+      // --- 7. LOGIC & COMBAT ---
 function handleAction() {
   if (isDead || isReloading) return;
   
@@ -338,7 +338,9 @@ function handleAction() {
         if(!isPlayer) { 
           remove(targetRef); const dropId = 'drop_' + Math.random().toString(36).substr(2,6);
           let loot = 'scrap';
-          if (target.type.startsWith('boss')) {
+          if (target.type && target.type.startsWith('boss')) {
+             // Record time of death for accurate 15 min respawn timer
+             update(ref(db, `boss_timers`), { [target.type]: Date.now() });
              loot = Math.random() < 0.5 ? 'shotgun' : 'medkit'; 
              localPlayer.money += 1000; 
              for(let i=0; i<3; i++) set(ref(db, `drops/drop_${Math.random().toString(36).substr(2,6)}`), {x: target.x+(Math.random()*40-20), y: target.y+(Math.random()*40-20), type: 'scrap', timestamp: Date.now()});
@@ -421,7 +423,7 @@ function updateGame(dt) {
   let inVirusBubble = false;
   for (let id in entities) {
      let e = entities[id];
-     if (e.type === 'zombie' || e.type.startsWith('boss')) {
+     if (e.type === 'zombie' || (e.type && e.type.startsWith('boss'))) {
         let r = e.type.startsWith('boss') ? 375 : 150;
         if (Math.hypot(e.x - localPlayer.x, e.y - localPlayer.y) < r) {
            inVirusBubble = true; break;
@@ -493,7 +495,7 @@ function updateUI() {
   document.getElementById('ammo-shotgun').innerText = `${localPlayer.inv.shotgunAmmo}/6`;
 }
 updateUI();
-  // --- 8. RENDERER ---
+// --- 8. RENDERER ---
 function drawCircle(x, y, r, color, border = null) {
   ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
   ctx.fillStyle = color; ctx.fill(); if (border) { ctx.strokeStyle = border; ctx.lineWidth = 2; ctx.stroke(); }
@@ -652,7 +654,7 @@ function drawMinimap() {
   mCtx.clearRect(0,0,160,160); const scale = 160 / mapSize;
   zones.forEach(z => { mCtx.fillStyle = z.border; mCtx.globalAlpha = 0.5; mCtx.fillRect(z.x * scale, z.y * scale, z.w * scale, z.h * scale); mCtx.globalAlpha = 1.0; });
   walls.forEach(w => { mCtx.fillStyle = '#555'; mCtx.fillRect(w.x*scale, w.y*scale, w.w*scale, w.h*scale); });
-  for(let id in entities) { mCtx.fillStyle = entities[id].type.startsWith('boss') ? '#e67e22' : '#27ae60'; let s = entities[id].type.startsWith('boss') ? 5 : 2; mCtx.fillRect(entities[id].x * scale - s/2, entities[id].y * scale - s/2, s, s); }
+  for(let id in entities) { mCtx.fillStyle = entities[id].type && entities[id].type.startsWith('boss') ? '#e67e22' : '#27ae60'; let s = entities[id].type && entities[id].type.startsWith('boss') ? 5 : 2; mCtx.fillRect(entities[id].x * scale - s/2, entities[id].y * scale - s/2, s, s); }
   mCtx.fillStyle = '#e74c3c';
   for(let id in otherPlayers) { if (otherPlayers[id].hp === undefined || otherPlayers[id].hp > 0) mCtx.fillRect(otherPlayers[id].x * scale - 2, otherPlayers[id].y * scale - 2, 4, 4); }
   if (!isDead) { mCtx.fillStyle = '#fff'; mCtx.fillRect(localPlayer.x * scale - 2, localPlayer.y * scale - 2, 5, 5); }
@@ -663,13 +665,23 @@ setInterval(() => {
   const now = Date.now();
   
   const checkBoss = (bType, bHp, bx, by) => {
-     let lastSpawn = bossTimers[bType] || 0;
-     if (now - lastSpawn > 900000) {
-        update(ref(db, `boss_timers`), { [bType]: now }); 
-        const bId = bType + '_' + Math.random().toString(36).substr(2,6);
-        set(ref(db, `entities/${bId}`), { x: bx, y: by, hp: bHp, type: bType, angle: 0, timestamp: now });
+     let isAlive = false;
+     for (let id in entities) {
+        if (entities[id].type === bType) { isAlive = true; break; }
+     }
+     
+     if (!isAlive) {
+        // If boss is dead, check if 15 minutes have passed since time of death. (0 means never died)
+        let lastDeath = bossTimers[bType] || 0;
+        if (now - lastDeath > 900000) {
+           // Flag future death to stop other clients from duplicating the spawn in the next split second
+           update(ref(db, `boss_timers`), { [bType]: now + 31536000000 }); 
+           const bId = bType + '_' + Math.random().toString(36).substr(2,6);
+           set(ref(db, `entities/${bId}`), { x: bx, y: by, hp: bHp, type: bType, angle: 0, timestamp: now });
+        }
      }
   };
+  
   checkBoss('boss_butcher', 8000, 8750, 1750);
   checkBoss('boss_spitter', 6000, 1250, 1250);
   checkBoss('boss_warden', 7000, 1250, 8750);
@@ -710,8 +722,8 @@ setInterval(() => {
     
     if (closestIsMe && closestDist < 1500) {
       let angle = Math.atan2(target.y - e.y, target.x - e.x); 
-      let speed = e.type === 'zombie' ? 8 : (e.type === 'boss_butcher' ? 12 : 5); 
-      let isAttacking = false; let range = e.type.startsWith('boss') ? 80 : 40;
+      let speed = e.type === 'zombie' ? 8 : (e.type && e.type === 'boss_butcher' ? 12 : 5); 
+      let isAttacking = false; let range = e.type && e.type.startsWith('boss') ? 80 : 40;
 
       if (e.type === 'boss_spitter' && Math.random() < 0.05 && closestDist < 800 && !inSafeZone(target.x, target.y) && !isDead) {
          let pId = 'projectile_' + Math.random().toString(36).substr(2,6);
@@ -732,7 +744,7 @@ setInterval(() => {
       if (closestDist < range && !isDead && !inSafeZone(localPlayer.x, localPlayer.y)) {
         isAttacking = true; 
         if (Math.random() < 0.3) { 
-           let dmg = e.type === 'boss_butcher' ? 30 : (e.type.startsWith('boss') ? 15 : 6);
+           let dmg = e.type === 'boss_butcher' ? 30 : ((e.type && e.type.startsWith('boss')) ? 15 : 6);
            localPlayer.hp = Math.max(0, localPlayer.hp - dmg);
            update(playerRef, { hp: localPlayer.hp }); updateUI();
         }
@@ -741,7 +753,13 @@ setInterval(() => {
     }
   }
   
-  for (let eid in entities) if (now - (entities[eid].timestamp||0) > 15000) remove(ref(db, `entities/${eid}`));
+  // Garbage Collection - BOSSES NEVER DESPAWN FROM INACTIVITY NOW
+  for (let eid in entities) {
+    let e = entities[eid];
+    if (e && e.type && e.type.startsWith('boss')) continue; 
+    if (now - (e.timestamp||0) > 15000) remove(ref(db, `entities/${eid}`));
+  }
+  
   for (let did in drops) if (now - (drops[did].timestamp||0) > 120000) remove(ref(db, `drops/${did}`));
 }, 100);
 
@@ -768,4 +786,4 @@ function loop() {
   requestAnimationFrame(loop);
 }
 loop();
-       
+          
