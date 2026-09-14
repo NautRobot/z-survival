@@ -355,39 +355,4 @@
     if (data && data.hp !== undefined) {
       if (data.hp <= 0 && localPlayer.hp > 0) handleDeath("You were killed by another survivor...");
       else if (data.hp < localPlayer.hp) localPlayer.hp = data.hp; 
-      updateUI();
-    }
-  });
-
-  function handleDeath(msg) {
-    if (isDead) return;
-    isDead = true;
-    closeShops();
-    
-    localPlayer.hp = 0;
-    localPlayer.money = 0;
-    localPlayer.inv = { pistol: false, shotgun: false, mask: 0, medkit: 0, scrap: 0, food: 0, water: 0, pistolAmmo: 0, shotgunAmmo: 0 };
-    
-    update(playerRef, { hp: 0 }); 
-    
-    document.getElementById('death-message').innerText = msg;
-    document.getElementById('death-screen').style.display = 'block';
-    
-    switchSlot(1);
-    updateUI();
-    saveGame(); 
-  }
-
-  document.getElementById('btn-respawn').onclick = () => {
-    isDead = false;
-    document.getElementById('death-screen').style.display = 'none';
-    
-    localPlayer.hp = localPlayer.maxHp;
-    localPlayer.virus = 0;
-    localPlayer.hunger = 100;
-    localPlayer.thirst = 100;
-    localPlayer.x = 2000;
-    localPlayer.y = 5000; 
-    
-    update(playerRef, { hp: localPlayer.maxHp, x: localPlayer.x, y: localPlayer.y });
-    s
+  
