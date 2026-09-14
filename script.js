@@ -38,7 +38,6 @@ const zones = [
   { name: "HOSPITAL\n(Absolute Heal)", x: 4500, y: 8000, w: 1200, h: 1000, color: "rgba(231, 76, 60, 0.15)", border: "#e74c3c", type: 'hospital' },
   { name: "BUNKER\n(Safe Spawn)", x: 1500, y: 4500, w: 1000, h: 1000, color: "rgba(52, 152, 219, 0.15)", border: "#3498db", type: 'safe' },
   { name: "TRADER\n(Buy/Sell)", x: 8000, y: 4500, w: 1000, h: 1000, color: "rgba(241, 196, 15, 0.15)", border: "#f1c40f", type: 'trader' },
-  // Boss Zones
   { name: "SLAUGHTERHOUSE\n(Boss Area)", x: 8000, y: 1000, w: 1500, h: 1500, color: "rgba(192, 57, 43, 0.2)", border: "#c0392b", type: 'boss_butcher' },
   { name: "TOXIC SWAMP\n(Boss Area)", x: 500, y: 500, w: 1500, h: 1500, color: "rgba(192, 57, 43, 0.2)", border: "#c0392b", type: 'boss_spitter' },
   { name: "PRISON\n(Boss Area)", x: 500, y: 8000, w: 1500, h: 1500, color: "rgba(192, 57, 43, 0.2)", border: "#c0392b", type: 'boss_warden' }
@@ -50,8 +49,6 @@ const walls = [
   {x: 8500, y: 1500, w: 200, h: 200}, {x: 8800, y: 1900, w: 200, h: 200},
   {x: 1000, y: 1000, w: 300, h: 100}, {x: 800, y: 1300, w: 100, h: 300},
   {x: 1000, y: 8500, w: 600, h: 50}, {x: 1000, y: 9000, w: 600, h: 50},
-  
-  // Zone Borders
   {x: 4500, y: 1500, w: 1000, h: 40}, {x: 4500, y: 1500, w: 40, h: 800}, {x: 5460, y: 1500, w: 40, h: 800},
   {x: 4500, y: 2260, w: 400, h: 40}, {x: 5100, y: 2260, w: 400, h: 40},
   {x: 4500, y: 8960, w: 1200, h: 40}, {x: 4500, y: 8000, w: 40, h: 1000}, {x: 5660, y: 8000, w: 40, h: 1000},
@@ -126,7 +123,6 @@ function saveGame() {
 
 const zekeImg = new Image(); zekeImg.src = 'zeke.jpg';
 const canvas = document.getElementById('gameCanvas'); const ctx = canvas.getContext('2d');
-
 const minimapCanvas = document.getElementById('minimap'); const mCtx = minimapCanvas.getContext('2d');
 minimapCanvas.width = 160; minimapCanvas.height = 160;
 
@@ -137,7 +133,6 @@ let otherPlayers = {}; let entities = {}; let drops = {}; let bossTimers = {};
 let activeSlot = localPlayer.activeSlot || 1; let drawMuzzleFlash = 0; let lastSync = 0; let lastAttackTime = 0;
 let camera = { x: localPlayer.x, y: localPlayer.y };
 let shopOpenType = 'none'; let isReloading = false; let reloadProgress = 0;
-
 // --- 4. INPUT & UI ---
 const keys = {};
 window.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; });
@@ -300,8 +295,7 @@ document.getElementById('btn-pistol').onclick = () => { if(localPlayer.money >= 
 document.getElementById('btn-shotgun').onclick = () => { if(localPlayer.money >= 1000 && !localPlayer.inv.shotgun) { localPlayer.money -= 1000; localPlayer.inv.shotgun = true; localPlayer.inv.shotgunAmmo = 6; updateUI(); updateShopUI(); switchSlot(3); }};
 document.getElementById('btn-food').onclick = () => { if(localPlayer.money >= 30) { localPlayer.money -= 30; localPlayer.inv.food++; updateUI(); updateShopUI(); }};
 document.getElementById('btn-water').onclick = () => { if(localPlayer.money >= 20) { localPlayer.money -= 20; localPlayer.inv.water++; updateUI(); updateShopUI(); }};
-
-// --- 7. LOGIC & COMBAT ---
+  // --- 7. LOGIC & COMBAT ---
 function handleAction() {
   if (isDead || isReloading) return;
   
@@ -406,10 +400,23 @@ function updateGame(dt) {
   
   if (inHosp) {
     localPlayer.hp = Math.min(localPlayer.maxHp, localPlayer.hp + 20 * dt);
+    localPlayer.virus = Math.max(0, localPlayer.virus - 40 * dt); 
   } 
   
-  localPlayer.hunger = Math.max(0, localPlayer.hunger - 0.5 * dt);
-  localPlayer.thirst = Math.max(0, localPlayer.thirst - 0.8 * dt);
+  let hDrain = 0.5, tDrain = 0.8, hpDrain = 0;
+  if (localPlayer.virus >= 100) {          
+      hDrain = 3.0; tDrain = 3.5; hpDrain = 8.0; 
+  } else if (localPlayer.virus >= 75) {    
+      hDrain = 2.0; tDrain = 2.5; hpDrain = 3.0; 
+  } else if (localPlayer.virus >= 50) {    
+      hDrain = 1.2; tDrain = 1.6; hpDrain = 1.0; 
+  } else if (localPlayer.virus >= 25) {    
+      hDrain = 1.0; tDrain = 1.2; hpDrain = 0.0; 
+  }
+
+  localPlayer.hunger = Math.max(0, localPlayer.hunger - hDrain * dt);
+  localPlayer.thirst = Math.max(0, localPlayer.thirst - tDrain * dt);
+  if (hpDrain > 0) localPlayer.hp -= hpDrain * dt;
 
   let inVirusBubble = false;
   for (let id in entities) {
@@ -427,7 +434,6 @@ function updateGame(dt) {
   }
 
   if (localPlayer.hunger <= 0 || localPlayer.thirst <= 0) localPlayer.hp -= 3 * dt;
-  if (localPlayer.virus >= 100) localPlayer.hp -= 5 * dt; 
   if (localPlayer.hp <= 0) { handleDeath("You succumbed to the wasteland elements..."); return; }
 
   let showPrompt = false, promptText = "";
@@ -448,7 +454,10 @@ function updateGame(dt) {
       x: Math.round(localPlayer.x), y: Math.round(localPlayer.y),
       angle: parseFloat(localPlayer.angle.toFixed(2)),
       isAttacking: localPlayer.isAttacking, color: localPlayer.color, 
-      activeSlot: localPlayer.activeSlot, timestamp: Date.now()
+      activeSlot: localPlayer.activeSlot, 
+      hp: Math.round(localPlayer.hp), 
+      virus: Math.round(localPlayer.virus), 
+      timestamp: Date.now()
     });
     lastSync = Date.now(); updateUI(); saveGame();
   }
@@ -484,8 +493,7 @@ function updateUI() {
   document.getElementById('ammo-shotgun').innerText = `${localPlayer.inv.shotgunAmmo}/6`;
 }
 updateUI();
-
-// --- 8. RENDERER ---
+  // --- 8. RENDERER ---
 function drawCircle(x, y, r, color, border = null) {
   ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
   ctx.fillStyle = color; ctx.fill(); if (border) { ctx.strokeStyle = border; ctx.lineWidth = 2; ctx.stroke(); }
@@ -496,6 +504,7 @@ function drawPlayer(p, isLocal) {
   const isBoss = p.type && p.type.startsWith('boss'); 
   const isZombie = p.type === 'zombie' || isBoss;
   const isProj = p.type === 'projectile';
+  const playerVirus = p.virus || 0; 
 
   if (isProj) {
     ctx.fillStyle = '#2ecc71'; ctx.beginPath(); ctx.arc(0,0,8,0,Math.PI*2); ctx.fill();
@@ -503,10 +512,20 @@ function drawPlayer(p, isLocal) {
     ctx.restore(); return;
   }
   
-  if (isZombie) {
+  if (isZombie || (p.isPlayer && playerVirus >= 25)) {
      ctx.save();
      ctx.beginPath();
-     let r = isBoss ? 375 : 150; 
+     
+     let r = 0;
+     if (isZombie) {
+        r = isBoss ? 375 : 150; 
+     } else {
+        if (playerVirus >= 100) r = 160;
+        else if (playerVirus >= 75) r = 120;
+        else if (playerVirus >= 50) r = 80;
+        else if (playerVirus >= 25) r = 40;
+     }
+
      ctx.arc(0, 0, r, 0, Math.PI * 2);
      ctx.fillStyle = 'rgba(46, 204, 113, 0.15)'; 
      ctx.fill();
@@ -635,7 +654,7 @@ function drawMinimap() {
   walls.forEach(w => { mCtx.fillStyle = '#555'; mCtx.fillRect(w.x*scale, w.y*scale, w.w*scale, w.h*scale); });
   for(let id in entities) { mCtx.fillStyle = entities[id].type.startsWith('boss') ? '#e67e22' : '#27ae60'; let s = entities[id].type.startsWith('boss') ? 5 : 2; mCtx.fillRect(entities[id].x * scale - s/2, entities[id].y * scale - s/2, s, s); }
   mCtx.fillStyle = '#e74c3c';
-  for(let id in otherPlayers) { if (otherPlayers[id].hp > 0) mCtx.fillRect(otherPlayers[id].x * scale - 2, otherPlayers[id].y * scale - 2, 4, 4); }
+  for(let id in otherPlayers) { if (otherPlayers[id].hp === undefined || otherPlayers[id].hp > 0) mCtx.fillRect(otherPlayers[id].x * scale - 2, otherPlayers[id].y * scale - 2, 4, 4); }
   if (!isDead) { mCtx.fillStyle = '#fff'; mCtx.fillRect(localPlayer.x * scale - 2, localPlayer.y * scale - 2, 5, 5); }
 }
 
@@ -685,7 +704,7 @@ setInterval(() => {
 
     let closestDist = Math.hypot(e.x - localPlayer.x, e.y - localPlayer.y); let closestIsMe = true; let target = localPlayer;
     for (let pid in otherPlayers) {
-      let p = otherPlayers[pid]; if (!p || p.hp <= 0) continue;
+      let p = otherPlayers[pid]; if (!p || p.hp === undefined || p.hp <= 0) continue;
       let d = Math.hypot(e.x - p.x, e.y - p.y); if (d < closestDist) { closestDist = d; closestIsMe = false; }
     }
     
@@ -735,7 +754,7 @@ function loop() {
   
   let renderList = [];
   for (let id in entities) renderList.push({...entities[id], isPlayer: false, isLocal: false});
-  for (let id in otherPlayers) if (otherPlayers[id].hp > 0) renderList.push({...otherPlayers[id], isPlayer: true, isLocal: false});
+  for (let id in otherPlayers) if (otherPlayers[id].hp === undefined || otherPlayers[id].hp > 0) renderList.push({...otherPlayers[id], isPlayer: true, isLocal: false});
   if (!isDead) renderList.push({...localPlayer, isPlayer: true, isLocal: true});
   
   renderList.sort((a,b) => {
@@ -749,3 +768,4 @@ function loop() {
   requestAnimationFrame(loop);
 }
 loop();
+       
