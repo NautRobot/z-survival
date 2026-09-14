@@ -495,7 +495,7 @@ function updateUI() {
   document.getElementById('ammo-shotgun').innerText = `${localPlayer.inv.shotgunAmmo}/6`;
 }
 updateUI();
-// --- 8. RENDERER ---
+        // --- 8. RENDERER ---
 function drawCircle(x, y, r, color, border = null) {
   ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
   ctx.fillStyle = color; ctx.fill(); if (border) { ctx.strokeStyle = border; ctx.lineWidth = 2; ctx.stroke(); }
@@ -671,13 +671,17 @@ setInterval(() => {
      }
      
      if (!isAlive) {
-        // If boss is dead, check if 15 minutes have passed since time of death. (0 means never died)
         let lastDeath = bossTimers[bType] || 0;
-        if (now - lastDeath > 900000) {
-           // Flag future death to stop other clients from duplicating the spawn in the next split second
-           update(ref(db, `boss_timers`), { [bType]: now + 31536000000 }); 
-           const bId = bType + '_' + Math.random().toString(36).substr(2,6);
-           set(ref(db, `entities/${bId}`), { x: bx, y: by, hp: bHp, type: bType, angle: 0, timestamp: now });
+        
+        // FIX: If the timer got corrupted by a ghost tab deleting it, repair it.
+        if (lastDeath > now) {
+           lastDeath = 0;
+           update(ref(db, `boss_timers`), { [bType]: 0 });
+        }
+        
+        if (now - lastDeath > 900000) { // 15 mins
+           // FIX: Uses Fixed IDs to prevent duplicate spawning conflicts
+           set(ref(db, `entities/${bType}`), { x: bx, y: by, hp: bHp, type: bType, angle: 0, timestamp: now });
         }
      }
   };
@@ -720,40 +724,45 @@ setInterval(() => {
       let d = Math.hypot(e.x - p.x, e.y - p.y); if (d < closestDist) { closestDist = d; closestIsMe = false; }
     }
     
-    if (closestIsMe && closestDist < 1500) {
-      let angle = Math.atan2(target.y - e.y, target.x - e.x); 
-      let speed = e.type === 'zombie' ? 8 : (e.type && e.type === 'boss_butcher' ? 12 : 5); 
-      let isAttacking = false; let range = e.type && e.type.startsWith('boss') ? 80 : 40;
+    if (closestIsMe) {
+      if (closestDist < 1500) {
+          let angle = Math.atan2(target.y - e.y, target.x - e.x); 
+          let speed = e.type === 'zombie' ? 8 : (e.type && e.type === 'boss_butcher' ? 12 : 5); 
+          let isAttacking = false; let range = e.type && e.type.startsWith('boss') ? 80 : 40;
 
-      if (e.type === 'boss_spitter' && Math.random() < 0.05 && closestDist < 800 && !inSafeZone(target.x, target.y) && !isDead) {
-         let pId = 'projectile_' + Math.random().toString(36).substr(2,6);
-         set(ref(db, `entities/${pId}`), {x: e.x, y: e.y, type: 'projectile', angle: angle, timestamp: now});
-      }
-      if (e.type === 'boss_warden' && Math.random() < 0.02) {
-         let zId = 'z_' + Math.random().toString(36).substr(2,6);
-         set(ref(db, `entities/${zId}`), {x: e.x + Math.random()*100-50, y: e.y + Math.random()*100-50, hp: 50, type: 'zombie', angle: 0, timestamp: now});
-      }
-      if (e.type === 'boss_butcher' && Math.random() < 0.05) { speed = 25; } 
+          if (e.type === 'boss_spitter' && Math.random() < 0.05 && closestDist < 800 && !inSafeZone(target.x, target.y) && !isDead) {
+             let pId = 'projectile_' + Math.random().toString(36).substr(2,6);
+             set(ref(db, `entities/${pId}`), {x: e.x, y: e.y, type: 'projectile', angle: angle, timestamp: now});
+          }
+          if (e.type === 'boss_warden' && Math.random() < 0.02) {
+             let zId = 'z_' + Math.random().toString(36).substr(2,6);
+             set(ref(db, `entities/${zId}`), {x: e.x + Math.random()*100-50, y: e.y + Math.random()*100-50, hp: 50, type: 'zombie', angle: 0, timestamp: now});
+          }
+          if (e.type === 'boss_butcher' && Math.random() < 0.05) { speed = 25; } 
 
-      let nx = e.x + Math.cos(angle) * speed; let ny = e.y + Math.sin(angle) * speed;
-      
-      if (!isColliding(nx, ny, 16, true)) { e.x = nx; e.y = ny; }
-      else if (!isColliding(nx, e.y, 16, true)) { e.x = nx; }
-      else if (!isColliding(e.x, ny, 16, true)) { e.y = ny; }
+          let nx = e.x + Math.cos(angle) * speed; let ny = e.y + Math.sin(angle) * speed;
+          
+          if (!isColliding(nx, ny, 16, true)) { e.x = nx; e.y = ny; }
+          else if (!isColliding(nx, e.y, 16, true)) { e.x = nx; }
+          else if (!isColliding(e.x, ny, 16, true)) { e.y = ny; }
 
-      if (closestDist < range && !isDead && !inSafeZone(localPlayer.x, localPlayer.y)) {
-        isAttacking = true; 
-        if (Math.random() < 0.3) { 
-           let dmg = e.type === 'boss_butcher' ? 30 : ((e.type && e.type.startsWith('boss')) ? 15 : 6);
-           localPlayer.hp = Math.max(0, localPlayer.hp - dmg);
-           update(playerRef, { hp: localPlayer.hp }); updateUI();
-        }
+          if (closestDist < range && !isDead && !inSafeZone(localPlayer.x, localPlayer.y)) {
+            isAttacking = true; 
+            if (Math.random() < 0.3) { 
+               let dmg = e.type === 'boss_butcher' ? 30 : ((e.type && e.type.startsWith('boss')) ? 15 : 6);
+               localPlayer.hp = Math.max(0, localPlayer.hp - dmg);
+               update(playerRef, { hp: localPlayer.hp }); updateUI();
+            }
+          }
+          update(ref(db, `entities/${id}`), { x: e.x, y: e.y, angle, isAttacking, timestamp: now });
+      } else if (e.type && e.type.startsWith('boss')) {
+          // FIX: Even if you are thousands of miles away, the closest player sends a tiny "keep alive" ping to the boss.
+          // This entirely prevents old browser tabs from deleting them.
+          update(ref(db, `entities/${id}`), { timestamp: now });
       }
-      update(ref(db, `entities/${id}`), { x: e.x, y: e.y, angle, isAttacking, timestamp: now });
     }
   }
   
-  // Garbage Collection - BOSSES NEVER DESPAWN FROM INACTIVITY NOW
   for (let eid in entities) {
     let e = entities[eid];
     if (e && e.type && e.type.startsWith('boss')) continue; 
@@ -786,4 +795,4 @@ function loop() {
   requestAnimationFrame(loop);
 }
 loop();
-          
+                                                                                                                                                                                                                         
