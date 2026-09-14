@@ -405,15 +405,15 @@ function updateGame(dt) {
     localPlayer.virus = Math.max(0, localPlayer.virus - 40 * dt); 
   } 
   
-  let hDrain = 0.5, tDrain = 0.8, hpDrain = 0;
+  let hDrain = 0.3, tDrain = 0.3, hpDrain = 0;
   if (localPlayer.virus >= 100) {          
-      hDrain = 3.0; tDrain = 3.5; hpDrain = 8.0; 
+      hDrain = 1.5; tDrain = 2.0; hpDrain = 5.0; 
   } else if (localPlayer.virus >= 75) {    
-      hDrain = 2.0; tDrain = 2.5; hpDrain = 3.0; 
+      hDrain = 1.0; tDrain = 1.5; hpDrain = 3.0; 
   } else if (localPlayer.virus >= 50) {    
-      hDrain = 1.2; tDrain = 1.6; hpDrain = 1.0; 
+      hDrain = 0.7; tDrain = 1.2; hpDrain = 1.0; 
   } else if (localPlayer.virus >= 25) {    
-      hDrain = 1.0; tDrain = 1.2; hpDrain = 0.0; 
+      hDrain = 0.4; tDrain = 0.8; hpDrain = 0.0; 
   }
 
   localPlayer.hunger = Math.max(0, localPlayer.hunger - hDrain * dt);
